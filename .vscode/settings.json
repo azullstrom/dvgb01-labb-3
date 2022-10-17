@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.ejs": "html",
+        "optimal.h": "c",
+        "fifo.h": "c",
+        "structs.h": "c"
+    }
+}

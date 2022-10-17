@@ -4,7 +4,8 @@
 #define MAX 100
 #define MAX_LENGTH 10
 
-int lines = 0;
+int pageFaults = 0, pageHits = 0, pageReplacement = 0, frameFull = 0;
+
 typedef struct MemoryAddress {
     char address[MAX_LENGTH];
     char pageNumberHex[MAX_LENGTH];
@@ -14,8 +15,14 @@ typedef struct MemoryAddress {
 } MemoryAddress;
 
 typedef struct Frames {
-    int hasElement
+    char address[MAX_LENGTH];
+    int hasElement;
+    int arrivalTime;
 } Frames;
+
+void fifoAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames);
+
+int lines = 0;
 
 int main(int argc, char* argv[]) {
     MemoryAddress memoryAddress[MAX] = {0};
@@ -80,9 +87,13 @@ int main(int argc, char* argv[]) {
     char *p;
     int numberOfFrames = (int)strtol(argv[3], &p, 10);
     Frames frames[numberOfFrames];
+
+    for(int i = 0; i < numberOfFrames; i++) {
+        frames[i].hasElement = 0;
+    }
     
     if(!fifoFalse) {
-
+        fifoAlgorithm(memoryAddress, frames, lines, numberOfFrames);
     } else if(!optimalFalse) {
 
     } else if(!lruFalse) {
@@ -93,4 +104,49 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
+}
+
+void fifoAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames) {
+    for(int i = 0; i < size; i++) {
+        for(int j = 0; j < numberOfFrames; j++) {
+            if(frames[j].hasElement) {
+                frames[j].arrivalTime++;
+            }
+
+            for(int k = 0; k < numberOfFrames; k++) {
+                if(frames[k].hasElement == 0) {
+                    break;
+                }
+                if(k == numberOfFrames - 1) {
+                    frameFull = 1;
+                    printf("full\n");
+                }
+            }
+
+            if(frames[j].hasElement == 0) {
+                pageFaults++;
+                frames[j].hasElement = 1;
+                strcpy(frames[j].address, memoryAddress[i].address);
+                break;
+            } else if(frames[j].hasElement && strcmp(memoryAddress[i].address, frames[j].address) == 0) {
+                pageHits++;
+                break;
+            } else if(frames[j].hasElement && strcmp(memoryAddress[i].address, frames[j].address) != 0 && frameFull) {
+                int removeIndex;
+                for(int k = 0; k < numberOfFrames; k++) {
+                    for(int l = 0; l < numberOfFrames; l++) {
+                        if(frames[k].arrivalTime > frames[l].arrivalTime) {
+                            removeIndex = k;
+                        } 
+                    }
+                }
+                break;
+            } 
+        }
+    }
+
+    for(int i = 0; i < numberOfFrames; i++) {
+        printf("%s", frames[i].address);
+    }
+    printf("full: %d\n", frameFull);
 }
