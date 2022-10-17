@@ -16,11 +16,15 @@ typedef struct MemoryAddress {
 
 typedef struct Frames {
     char address[MAX_LENGTH];
+    int pageNumberDec;
     int hasElement;
     int arrivalTime;
+    int leastRecent;
 } Frames;
 
 void fifoAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames);
+void lruAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames);
+void optimalAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames);
 
 int lines = 0;
 
@@ -90,14 +94,20 @@ int main(int argc, char* argv[]) {
 
     for(int i = 0; i < numberOfFrames; i++) {
         frames[i].hasElement = 0;
+        frames[i].arrivalTime = 0;
+        frames[i].pageNumberDec = 0;
+        frames[i].leastRecent = 0;
     }
     
     if(!fifoFalse) {
+        printf("Algorithm: FIFO\nFrames: %d\nMemory accesses: %d\n", numberOfFrames, lines);
         fifoAlgorithm(memoryAddress, frames, lines, numberOfFrames);
     } else if(!optimalFalse) {
-
+        printf("Algorithm: Optimal\nFrames: %d\nMemory accesses: %d\n", numberOfFrames, lines);
+        optimalAlgorithm(memoryAddress, frames, lines, numberOfFrames);
     } else if(!lruFalse) {
-    
+        printf("Algorithm: LRU\nFrames: %d\nMemory accesses: %d\n", numberOfFrames, lines);
+        lruAlgorithm(memoryAddress, frames, lines, numberOfFrames);
     } else {
         printf("Error: First parameter has to be the file.dat\nand the second parameter has to be the algorithm name\nand the third has to be number of frames.\n");
         exit(1);
@@ -106,47 +116,203 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+void checkFull(Frames frames[], int numberOfFrames) {
+    for(int i = 0; i < numberOfFrames; i++) {
+        if(frames[i].hasElement == 0) {
+            break;
+        }
+        if(i == numberOfFrames - 1) {
+            frameFull = 1;
+            //printf("full\n");
+        }
+    }
+}
+
+int getFirstArrival(Frames frames[], int numberOfFrames) {
+    int removeIndex = 0;
+    int max = frames[0].arrivalTime;
+
+    for (int i = 0; i < numberOfFrames; i++){
+        if(frames[i].arrivalTime > max) {
+            max = frames[i].arrivalTime;
+            removeIndex = i;
+        }
+    }
+
+    return removeIndex;
+}
+
+int getLeastRecent(Frames frames[], int numberOfFrames) {
+    int removeIndex = 0;
+    int max = frames[0].leastRecent;
+
+    for (int i = 0; i < numberOfFrames; i++){
+        if(frames[i].leastRecent > max) {
+            max = frames[i].leastRecent;
+            removeIndex = i;
+        }
+    }
+
+    return removeIndex;
+}
+
+int getOptimal(int referenceIndex, Frames frames[], MemoryAddress memoryAddress[], int numberOfFrames, int size) {
+    int count[numberOfFrames];
+
+    for(int i = 0; i < numberOfFrames; i++) {
+        // Check if exists at all
+        for(int j = referenceIndex; j < size; j++) {
+            if(frames[i].pageNumberDec != memoryAddress[j].pageNumberDec) {
+                if(j == size - 1) {
+                    count[i] = 1000; // Flag to remove because this one does not exist in remaining reference list
+                    break;
+                }
+            }
+        }
+        // Otherwise check frame that occurrs last
+        for(int j = referenceIndex; j < size; j++) {
+            if(frames[i].pageNumberDec == memoryAddress[j].pageNumberDec) {
+                break;
+            }
+            count[i]++;
+        }
+    }
+
+    int removeIndex = 0;
+    int max = count[0];
+    for (int i = 0; i < numberOfFrames; i++){
+        if(count[i] > max) {
+            max = count[i];
+            removeIndex = i;
+        }
+    }
+
+    return removeIndex;
+}
+
+int pageHitInFrame(int pageNumberDec, Frames frames[], int numberOfFrames) {
+    for(int i = 0; i < numberOfFrames; i++) {
+        if(pageNumberDec == frames[i].pageNumberDec) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 void fifoAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames) {
     for(int i = 0; i < size; i++) {
+        // Incrementing arrival time for every frame that hasElement
         for(int j = 0; j < numberOfFrames; j++) {
             if(frames[j].hasElement) {
                 frames[j].arrivalTime++;
             }
+        }
+        for(int j = 0; j < numberOfFrames; j++) {
+            //printf("j: %d frame: %d memory: %d HAS ELEMENT: %d\n", j, frames[j].pageNumberDec, memoryAddress[i].pageNumberDec, frames[j].hasElement);
+            checkFull(frames, numberOfFrames); 
 
-            for(int k = 0; k < numberOfFrames; k++) {
-                if(frames[k].hasElement == 0) {
-                    break;
-                }
-                if(k == numberOfFrames - 1) {
-                    frameFull = 1;
-                    printf("full\n");
-                }
+            if(frames[j].hasElement == 0) {
+                pageFaults++; 
+                frames[j].hasElement = 1;
+                strcpy(frames[j].address, memoryAddress[i].address);
+                frames[j].pageNumberDec = memoryAddress[i].pageNumberDec;
+                //printf("page fault: %s", memoryAddress[i].address);
+                break;
+            } else if(frames[j].hasElement && frames[j].pageNumberDec == memoryAddress[i].pageNumberDec) {
+                //printf("hit: %s", memoryAddress[i].address);
+                pageHits++;
+                break;
+            } else if(frames[j].hasElement && !pageHitInFrame(memoryAddress[i].pageNumberDec, frames, numberOfFrames) && frameFull) {
+                int index = getFirstArrival(frames, numberOfFrames);
+                //printf("replace %s with %s \n", frames[index].address, memoryAddress[i].address);
+                strcpy(frames[index].address, memoryAddress[i].address);
+                frames[index].pageNumberDec = memoryAddress[i].pageNumberDec;
+                frames[index].arrivalTime = 0;
+                pageFaults++;
+                pageReplacement++;
+                break;
+            } 
+        }
+    } 
+
+    printf("Page Hits: %d\nPage Faults: %d\nPage Replacements: %d\n", pageHits, pageFaults, pageReplacement);
+}
+
+void lruAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames) {
+    for(int i = 0; i < size; i++) {
+        // Incrementing arrival time for every frame that hasElement
+        for(int j = 0; j < numberOfFrames; j++) {
+            if(frames[j].hasElement) {
+                frames[j].leastRecent++;
             }
+        }
+
+        for(int j = 0; j < numberOfFrames; j++) {
+            //printf("j: %d frame: %d memory: %d HAS ELEMENT: %d\n", j, frames[j].pageNumberDec, memoryAddress[i].pageNumberDec, frames[j].hasElement);
+            
+            checkFull(frames, numberOfFrames);
 
             if(frames[j].hasElement == 0) {
                 pageFaults++;
                 frames[j].hasElement = 1;
                 strcpy(frames[j].address, memoryAddress[i].address);
+                frames[j].pageNumberDec = memoryAddress[i].pageNumberDec;
+                //printf("page fault: %s", memoryAddress[i].address);
                 break;
-            } else if(frames[j].hasElement && strcmp(memoryAddress[i].address, frames[j].address) == 0) {
+            } else if(frames[j].hasElement && frames[j].pageNumberDec == memoryAddress[i].pageNumberDec) {
+                //printf("hit: %s", memoryAddress[i].address);
+                frames[j].leastRecent = 0;
                 pageHits++;
                 break;
-            } else if(frames[j].hasElement && strcmp(memoryAddress[i].address, frames[j].address) != 0 && frameFull) {
-                int removeIndex;
-                for(int k = 0; k < numberOfFrames; k++) {
-                    for(int l = 0; l < numberOfFrames; l++) {
-                        if(frames[k].arrivalTime > frames[l].arrivalTime) {
-                            removeIndex = k;
-                        } 
-                    }
-                }
+            } else if(frames[j].hasElement && !pageHitInFrame(memoryAddress[i].pageNumberDec, frames, numberOfFrames) && frameFull) {
+                int index = getLeastRecent(frames, numberOfFrames);
+                //printf("replace %s with %s\n", frames[index].address, memoryAddress[i].address);
+                strcpy(frames[index].address, memoryAddress[i].address);
+                frames[index].pageNumberDec = memoryAddress[i].pageNumberDec;
+                frames[index].leastRecent = 0;
+                pageFaults++;
+                pageReplacement++;
                 break;
             } 
         }
     }
 
-    for(int i = 0; i < numberOfFrames; i++) {
-        printf("%s", frames[i].address);
+    printf("Page Hits: %d\nPage Faults: %d\nPage Replacements: %d\n", pageHits, pageFaults, pageReplacement);
+}
+
+void optimalAlgorithm(MemoryAddress memoryAddress[], Frames frames[], int size, int numberOfFrames) {
+    for(int i = 0; i < size; i++) {
+        for(int j = 0; j < numberOfFrames; j++) {
+            //printf("j: %d frame: %d memory: %d HAS ELEMENT: %d\n", j, frames[j].pageNumberDec, memoryAddress[i].pageNumberDec, frames[j].hasElement);
+            
+            checkFull(frames, numberOfFrames);
+
+            if(frames[j].hasElement == 0) {
+                pageFaults++;
+                frames[j].hasElement = 1;
+                strcpy(frames[j].address, memoryAddress[i].address);
+                frames[j].pageNumberDec = memoryAddress[i].pageNumberDec;
+                //printf("page fault: %s", memoryAddress[i].address);
+                break;
+            } else if(frames[j].hasElement && frames[j].pageNumberDec == memoryAddress[i].pageNumberDec) {
+                //printf("hit: %s", memoryAddress[i].address);
+                pageHits++;
+                break;
+            } else if(frames[j].hasElement && !pageHitInFrame(memoryAddress[i].pageNumberDec, frames, numberOfFrames) && frameFull) {
+                int index = getOptimal(i, frames, memoryAddress, numberOfFrames, size);
+                //printf("%d\n", index);
+                if(index == -1) {
+                    printf("Error\n");
+                }
+                //printf("replace %s with %s\n", frames[index].address, memoryAddress[i].address);
+                strcpy(frames[index].address, memoryAddress[i].address);
+                frames[index].pageNumberDec = memoryAddress[i].pageNumberDec;
+                pageFaults++;
+                pageReplacement++;
+                break;
+            } 
+        }
     }
-    printf("full: %d\n", frameFull);
+
+    printf("Page Hits: %d\nPage Faults: %d\nPage Replacements: %d\n", pageHits, pageFaults, pageReplacement);
 }
